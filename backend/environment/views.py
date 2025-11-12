@@ -1,10 +1,8 @@
 import pandas as pd
-from rest_framework.views import APIView
+from rest_framework import generics, parsers, status, viewsets
 from rest_framework.response import Response
-from rest_framework import status, viewsets, parsers
-from django.core.files.storage import FileSystemStorage
 from .models import District, EnvironmentalData
-from .serializers import EnvironmentalDataSerializer
+from .serializers import EnvironmentalDataSerializer, UploadCSVSerializer
 
 
 # 🌿 Viewset for managing environmental data through API
@@ -14,8 +12,9 @@ class EnvironmentDataViewSet(viewsets.ModelViewSet):
 
 
 # 📂 API for uploading CSV data
-class UploadCSV(APIView):
+class UploadCSV(generics.GenericAPIView):
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    serializer_class = UploadCSVSerializer
 
     def get(self, request):
         return Response(
@@ -26,29 +25,25 @@ class UploadCSV(APIView):
         )
 
     def post(self, request):
-        if 'file' not in request.FILES:
-            return Response(
-                {"error": "No file uploaded. Use multipart/form-data with a 'file' field."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        file = request.FILES['file']
-        fs = FileSystemStorage()
-        filename = fs.save(file.name, file)
-        filepath = fs.path(filename)
+        upload = serializer.validated_data['file']
+        df = pd.read_csv(upload)
 
-        # Read the uploaded CSV using pandas
-        df = pd.read_csv(filepath)
-
-        # Loop through each row and save to database
+        created = 0
         for _, row in df.iterrows():
             district, _ = District.objects.get_or_create(name=row['District'])
             EnvironmentalData.objects.create(
                 district=district,
                 temperature=row['Temperature'],
                 air_quality_index=row['AQI'],
-                rainfall=row['Rainfall'],
+                rainfall=row.get('Rainfall'),
                 date=row['Date']
             )
+            created += 1
 
-        return Response({"message": "Data uploaded successfully!"}, status=status.HTTP_201_CREATED)
+        return Response(
+            {"message": f"Data uploaded successfully! {created} rows imported."},
+            status=status.HTTP_201_CREATED,
+        )

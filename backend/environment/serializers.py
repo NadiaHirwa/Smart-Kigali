@@ -4,4 +4,8 @@ from .models import EnvironmentalData
 class EnvironmentalDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = EnvironmentalData
-        fields = '__all__' 
+        fields = '__all__'
+
+
+class UploadCSVSerializer(serializers.Serializer):
+    file = serializers.FileField() 
